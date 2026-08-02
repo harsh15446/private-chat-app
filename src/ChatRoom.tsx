@@ -11,12 +11,14 @@ import {
   setDoc,
   updateDoc,
   arrayUnion,
+  arrayRemove,
 } from "firebase/firestore";
 
 import {
   ref,
   set,
   onValue,
+  onDisconnect,
   serverTimestamp,
 } from "firebase/database";
 
@@ -46,28 +48,44 @@ type Props = {
 
 
 function ChatRoom({
+
 roomId,
+
 username
+
 }:Props){
+
 
 
 const [message,setMessage] =
 useState("");
 
+
+
 const [messages,setMessages] =
 useState<Message[]>([]);
+
+
 
 const [allowed,setAllowed] =
 useState(false);
 
+
+
 const [loading,setLoading] =
 useState(true);
+
+
 
 const [showEmoji,setShowEmoji] =
 useState(false);
 
+
+
 const [onlineUsers,setOnlineUsers] =
 useState<string[]>([]);
+
+
 
 const [typingUsers,setTypingUsers] =
 useState<string[]>([]);
@@ -79,16 +97,20 @@ useRef<HTMLDivElement|null>(null);
 
 
 
-// ROOM CHECK
+
+
+// ROOM JOIN + CLEANUP
+
 
 useEffect(()=>{
 
 
-async function checkRoom(){
+async function joinRoom(){
 
 
 const roomRef =
 doc(db,"rooms",roomId);
+
 
 
 const snap =
@@ -96,16 +118,21 @@ await getDoc(roomRef);
 
 
 
+
 if(!snap.exists()){
 
 
 await setDoc(roomRef,{
+
 members:[username]
+
 });
 
 
 setAllowed(true);
+
 setLoading(false);
+
 return;
 
 }
@@ -116,60 +143,79 @@ const data =
 snap.data();
 
 
+
 const members =
 data.members || [];
 
 
 
+
 if(members.includes(username)){
 
+
 setAllowed(true);
+
 setLoading(false);
+
 return;
 
 }
+
 
 
 
 if(members.length >= 2){
 
+
 setAllowed(false);
+
 setLoading(false);
 
-alert("Room Full");
 
 return;
 
+
 }
+
 
 
 
 await updateDoc(roomRef,{
-members:arrayUnion(username)
+
+members:
+arrayUnion(username)
+
 });
 
 
+
 setAllowed(true);
+
 setLoading(false);
+
 
 
 }
 
 
-checkRoom();
+
+joinRoom();
 
 
-},[roomId,username]);
 
+},[
+roomId,
+username
+]);
+ 
 
-// ONLINE START
-
-// 🟢 ONLINE STATUS
+// 🟢 ONLINE / OFFLINE STATUS
 
 useEffect(()=>{
 
 
 if(!allowed) return;
+
 
 
 const userRef =
@@ -190,14 +236,15 @@ lastSeen:serverTimestamp()
 
 
 
-window.addEventListener("beforeunload",()=>{
+onDisconnect(userRef)
+.set({
 
-set(userRef,{
-  online:false,
-  lastSeen:serverTimestamp()
+online:false,
+
+lastSeen:serverTimestamp()
+
 });
 
-});
 
 
 
@@ -221,14 +268,15 @@ snap.val();
 if(data){
 
 
-const users =
+setOnlineUsers(
+
 Object.keys(data)
+
 .filter(
 user => data[user].online
+)
+
 );
-
-
-setOnlineUsers(users);
 
 
 }else{
@@ -246,6 +294,7 @@ setOnlineUsers([]);
 return ()=>unsubscribe();
 
 
+
 },[
 allowed,
 roomId,
@@ -256,12 +305,15 @@ username
 
 
 
+
 // ✍️ TYPING STATUS
+
 
 useEffect(()=>{
 
 
 if(!allowed)return;
+
 
 
 const typingRef =
@@ -281,12 +333,15 @@ message.length > 0
 
 return ()=>{
 
+
 set(
 typingRef,
 false
 );
 
+
 };
+
 
 
 },[
@@ -300,8 +355,8 @@ username
 
 
 
-
 // 👀 LISTEN TYPING
+
 
 useEffect(()=>{
 
@@ -319,13 +374,12 @@ rtdb,
 
 
 const unsubscribe =
-onValue(
-typingRef,
-(snap)=>{
+onValue(typingRef,(snap)=>{
 
 
 const data =
 snap.val();
+
 
 
 if(data){
@@ -334,10 +388,11 @@ if(data){
 setTypingUsers(
 
 Object.keys(data)
+
 .filter(
 user =>
-data[user] === true &&
-user !== username
+user !== username &&
+data[user] === true
 )
 
 );
@@ -354,7 +409,9 @@ setTypingUsers([]);
 });
 
 
+
 return ()=>unsubscribe();
+
 
 
 },[
@@ -362,17 +419,16 @@ allowed,
 roomId,
 username
 ]);
-
-
-
-
+ 
 
 // 💬 LOAD MESSAGES
+
 
 useEffect(()=>{
 
 
 if(!allowed)return;
+
 
 
 const q =
@@ -415,13 +471,81 @@ id:doc.id,
 return ()=>unsubscribe();
 
 
+
 },[
 allowed,
 roomId
 ]);
- 
+
+
+
+
+
+
+// 🧹 REMOVE USER WHEN LEAVE
+
+
+useEffect(()=>{
+
+
+if(!allowed)return;
+
+
+
+const removeUser = async()=>{
+
+
+await updateDoc(
+
+doc(db,"rooms",roomId),
+
+{
+
+members:
+arrayRemove(username)
+
+}
+
+);
+
+
+};
+
+
+
+window.addEventListener(
+"beforeunload",
+removeUser
+);
+
+
+
+return()=>{
+
+
+window.removeEventListener(
+"beforeunload",
+removeUser
+);
+
+
+};
+
+
+},[
+allowed,
+roomId,
+username
+]);
+
+
+
+
+
+
 
 // AUTO SCROLL
+
 
 useEffect(()=>{
 
@@ -433,13 +557,17 @@ behavior:"smooth"
 });
 
 
-},[messages]);
+},[
+messages
+]);
+
 
 
 
 
 
 // SEND MESSAGE
+
 
 const sendMessage =
 async()=>{
@@ -477,11 +605,6 @@ setMessage("");
 
 };
 
-
-
-
-
-
 if(loading){
 
 return (
@@ -499,7 +622,6 @@ Checking Room...
 
 
 
-
 if(!allowed){
 
 return (
@@ -513,7 +635,7 @@ return (
 </h2>
 
 <p>
-Only 2 users allowed
+Try another room
 </p>
 
 </div>
@@ -535,6 +657,7 @@ return (
 <div className="chat-box">
 
 
+
 <ChatHeader roomId={roomId}/>
 
 
@@ -542,14 +665,18 @@ return (
 <div className="online-status">
 
 🟢 Online:
+
 {" "}
+
 {onlineUsers.join(", ")}
 
 </div>
 
 
 
+
 {
+
 typingUsers.length > 0 &&
 
 <div className="typing">
@@ -582,13 +709,14 @@ text={msg.text}
 
 currentUser={username}
 
+
 />
 
 
 ))
 
-}
 
+}
 
 
 <div ref={bottomRef}/>
@@ -600,24 +728,36 @@ currentUser={username}
 
 
 
+
+
 {
+
 showEmoji &&
 
 <div className="emoji-box">
+
 
 <EmojiPicker
 
 onEmojiClick={(emoji)=>{
 
+
 setMessage(
+
 message + emoji.emoji
+
 );
+
 
 setShowEmoji(false);
 
+
+
 }}
 
+
 />
+
 
 </div>
 
@@ -628,7 +768,9 @@ setShowEmoji(false);
 
 
 
+
 <div className="input-box">
+
 
 
 <button
@@ -640,6 +782,7 @@ onClick={()=>setShowEmoji(!showEmoji)}
 😀
 
 </button>
+
 
 
 
@@ -660,6 +803,7 @@ setMessage(e.target.value)
 
 
 
+
 <button
 
 onClick={sendMessage}
@@ -671,7 +815,9 @@ Send
 </button>
 
 
+
 </div>
+
 
 
 
@@ -685,6 +831,7 @@ Send
 
 
 }
+
 
 
 export default ChatRoom;
