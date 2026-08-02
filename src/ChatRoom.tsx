@@ -20,7 +20,6 @@ import {
   onValue,
   onDisconnect,
   serverTimestamp,
-  remove,
 } from "firebase/database";
 
 import EmojiPicker from "emoji-picker-react";
