@@ -17,7 +17,6 @@ import {
   ref,
   set,
   onValue,
-  onDisconnect,
   serverTimestamp,
 } from "firebase/database";
 
