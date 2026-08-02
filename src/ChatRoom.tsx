@@ -1,9 +1,8 @@
-import { 
+import {
   useEffect,
   useRef,
   useState
 } from "react";
-
 
 import {
   addDoc,
@@ -19,7 +18,6 @@ import {
   arrayRemove
 } from "firebase/firestore";
 
-
 import {
   ref,
   set,
@@ -28,9 +26,7 @@ import {
   serverTimestamp
 } from "firebase/database";
 
-
 import EmojiPicker from "emoji-picker-react";
-
 
 import {
   createRoomKey,
@@ -38,452 +34,419 @@ import {
   decryptText
 } from "./crypto";
 
-
 import {
   db,
   rtdb
 } from "./firebase";
 
-
 import ChatHeader from "./components/ChatHeader";
-
 import MessageBubble from "./components/MessageBubble";
 
 import "./App.css";
 
 
-
 type Message = {
 
-id:string;
+  id: string;
 
-data?:number[];
+  data?: number[];
 
-iv?:number[];
+  iv?: number[];
 
-text?:string;
+  text: string;
 
-user:string;
+  user: string;
 
-time:any;
+  time: any;
 
 };
-
 
 
 type Props = {
 
-roomId:string;
+  roomId: string;
 
-username:string;
+  username: string;
 
 };
-
 
 
 function ChatRoom({
 
-roomId,
+  roomId,
 
-username
+  username
 
-}:Props){
+}: Props) {
 
 
+  const [message, setMessage] =
+    useState("");
 
-const [message,setMessage] =
-useState("");
 
+  const [messages, setMessages] =
+    useState<Message[]>([]);
 
 
-const [messages,setMessages] =
-useState<Message[]>([]);
+  const [allowed, setAllowed] =
+    useState(false);
 
 
+  const [loading, setLoading] =
+    useState(true);
 
-const [allowed,setAllowed] =
-useState(false);
 
+  const [showEmoji, setShowEmoji] =
+    useState(false);
 
 
-const [loading,setLoading] =
-useState(true);
+  const [onlineUsers, setOnlineUsers] =
+    useState<string[]>([]);
 
 
+  const [typingUsers, setTypingUsers] =
+    useState<string[]>([]);
 
-const [showEmoji,setShowEmoji] =
-useState(false);
 
+  const [roomKey, setRoomKey] =
+    useState<CryptoKey | null>(null);
 
 
-const [onlineUsers,setOnlineUsers] =
-useState<string[]>([]);
+  const bottomRef =
+    useRef<HTMLDivElement | null>(null);
+    // E2EE ROOM JOIN
 
+useEffect(() => {
 
 
-const [typingUsers,setTypingUsers] =
-useState<string[]>([]);
+  async function joinRoom() {
 
 
+    const key =
+      await createRoomKey(roomId);
 
-const [roomKey,setRoomKey] =
-useState<CryptoKey|null>(null);
 
+    setRoomKey(key);
 
 
-const bottomRef =
-useRef<HTMLDivElement|null>(null);
-// ROOM JOIN + KEY SETUP
 
-useEffect(()=>{
+    const roomRef =
+      doc(db, "rooms", roomId);
 
 
-async function joinRoom(){
 
+    const snap =
+      await getDoc(roomRef);
 
-const roomRef =
-doc(db,"rooms",roomId);
 
 
+    // CREATE NEW ROOM
 
-const snap =
-await getDoc(roomRef);
+    if (!snap.exists()) {
 
 
+      await setDoc(roomRef, {
 
-if(!snap.exists()){
+        members: [username]
 
+      });
 
-const key =
-await createKey();
 
+      setAllowed(true);
 
-const exported =
-await exportKey(key);
+      setLoading(false);
 
+      return;
 
-await setDoc(roomRef,{
+    }
 
-members:[username],
 
-key:exported
 
-});
+    const data =
+      snap.data();
 
 
-setRoomKey(key);
 
-setAllowed(true);
+    const members =
+      data.members || [];
 
-setLoading(false);
 
-return;
 
-}
+    // SAME USER REJOIN
 
+    if (members.includes(username)) {
 
 
-const data =
-snap.data();
+      setAllowed(true);
 
+      setLoading(false);
 
+      return;
 
-const members =
-data.members || [];
+    }
 
 
 
+    // ONLY 2 USERS ALLOWED
 
-// already joined
+    if (members.length >= 2) {
 
-if(members.includes(username)){
 
+      setAllowed(false);
 
-if(data.key){
+      setLoading(false);
 
-const key =
-await importKey(
-data.key
-);
+      return;
 
+    }
 
-setRoomKey(key);
 
-}
 
+    // ADD SECOND USER
 
-setAllowed(true);
+    await updateDoc(roomRef, {
 
-setLoading(false);
+      members:
+        arrayUnion(username)
 
-return;
+    });
 
-}
 
 
+    setAllowed(true);
 
+    setLoading(false);
 
 
-if(members.length >= 2){
+  }
 
 
-setAllowed(false);
 
-setLoading(false);
+  joinRoom();
 
-return;
 
+}, [
 
-}
+  roomId,
 
+  username
 
-
-
-if(data.key){
-
-
-const key =
-await importKey(
-data.key
-);
-
-
-setRoomKey(key);
-
-
-}
-
-
-
-
-await updateDoc(roomRef,{
-
-members:
-arrayUnion(username)
-
-});
-
-
-
-setAllowed(true);
-
-setLoading(false);
-
-
-
-}
-
-
-
-joinRoom();
-
-
-
-},[
-roomId,
-username
 ]);
-
-
-
-
-
 // ONLINE STATUS
 
-
-useEffect(()=>{
-
-
-if(!allowed)return;
+useEffect(() => {
 
 
-
-const userRef =
-ref(
-rtdb,
-`rooms/${roomId}/onlineUsers/${username}`
-);
+  if (!allowed) return;
 
 
 
-set(userRef,{
-
-online:true,
-
-lastSeen:serverTimestamp()
-
-});
+  const userRef =
+    ref(
+      rtdb,
+      `rooms/${roomId}/onlineUsers/${username}`
+    );
 
 
 
-onDisconnect(userRef)
-.remove();
+  set(userRef, {
+
+    online: true,
+
+    lastSeen: serverTimestamp()
+
+  });
 
 
 
-
-const usersRef =
-ref(
-rtdb,
-`rooms/${roomId}/onlineUsers`
-);
+  onDisconnect(userRef)
+    .remove();
 
 
 
-const unsub =
-onValue(usersRef,(snap)=>{
-
-
-const data =
-snap.val();
-
-
-
-if(data){
-
-
-setOnlineUsers(
-
-Object.keys(data)
-
-.filter(
-user=>data[user].online
-)
-
-);
-
-
-}else{
-
-
-setOnlineUsers([]);
-
-}
-
-
-});
+  const usersRef =
+    ref(
+      rtdb,
+      `rooms/${roomId}/onlineUsers`
+    );
 
 
 
-return ()=>unsub();
+  const unsub =
+    onValue(usersRef, (snap) => {
+
+
+      const data =
+        snap.val();
 
 
 
-},[
-allowed,
-roomId,
-username
+      if (data) {
+
+
+        setOnlineUsers(
+
+          Object.keys(data)
+
+            .filter(
+              user => data[user].online
+            )
+
+        );
+
+
+      } else {
+
+
+        setOnlineUsers([]);
+
+
+      }
+
+
+    });
+
+
+
+  return () => unsub();
+
+
+}, [
+
+  allowed,
+
+  roomId,
+
+  username
+
 ]);
+
+
+
+
+
 // TYPING STATUS
 
-useEffect(()=>{
+useEffect(() => {
 
 
-if(!allowed)return;
-
-
-
-const typingRef =
-ref(
-rtdb,
-`rooms/${roomId}/typing/${username}`
-);
+  if (!allowed) return;
 
 
 
-set(
-typingRef,
-message.length > 0
-);
+  const typingRef =
+    ref(
+      rtdb,
+      `rooms/${roomId}/typing/${username}`
+    );
 
 
 
-return ()=>{
-
-
-set(
-typingRef,
-false
-);
-
-
-};
+  set(
+    typingRef,
+    message.length > 0
+  );
 
 
 
-},[
-message,
-allowed,
-roomId,
-username
+  return () => {
+
+
+    set(
+      typingRef,
+      false
+    );
+
+
+  };
+
+
+}, [
+
+  message,
+
+  allowed,
+
+  roomId,
+
+  username
+
 ]);
+
+
 
 
 
 
 // LISTEN TYPING
 
-useEffect(()=>{
+useEffect(() => {
 
 
-if(!allowed)return;
-
-
-
-const typingRef =
-ref(
-rtdb,
-`rooms/${roomId}/typing`
-);
+  if (!allowed) return;
 
 
 
-const unsub =
-onValue(
-typingRef,
-(snap)=>{
-
-
-const data =
-snap.val();
+  const typingRef =
+    ref(
+      rtdb,
+      `rooms/${roomId}/typing`
+    );
 
 
 
-if(data){
+  const unsub =
+    onValue(
+      typingRef,
+      (snap) => {
 
 
-setTypingUsers(
-
-Object.keys(data)
-
-.filter(
-user=>
-user !== username &&
-data[user] === true
-)
-
-);
-
-
-}else{
-
-
-setTypingUsers([]);
-
-}
-
-
-});
-
-
-return ()=>unsub();
+        const data =
+          snap.val();
 
 
 
-},[
-allowed,
-roomId,
-username
+        if (data) {
+
+
+          setTypingUsers(
+
+            Object.keys(data)
+
+              .filter(
+                user =>
+                  user !== username &&
+                  data[user] === true
+              )
+
+          );
+
+
+        } else {
+
+
+          setTypingUsers([]);
+
+
+        }
+
+
+      }
+    );
+
+
+
+  return () => unsub();
+
+
+}, [
+
+  allowed,
+
+  roomId,
+
+  username
+
 ]);
 
 
@@ -492,197 +455,212 @@ username
 
 // LOAD + DECRYPT MESSAGES
 
-
-useEffect(()=>{
-
-
-if(!allowed || !roomKey)
-return;
+useEffect(() => {
 
 
-
-const q =
-query(
-
-collection(
-db,
-"rooms",
-roomId,
-"messages"
-),
-
-orderBy("time")
-
-);
+  if (!allowed || !roomKey)
+    return;
 
 
 
-const unsub =
-onSnapshot(
-q,
-async(snapshot)=>{
+  const q =
+    query(
 
+      collection(
+        db,
+        "rooms",
+        roomId,
+        "messages"
+      ),
 
-const list:Message[]=[];
+      orderBy("time")
 
-
-
-for(const d of snapshot.docs){
-
-
-const data =
-d.data();
-
-
-
-let text="";
+    );
 
 
 
-if(
-data.data &&
-data.iv
-){
+  const unsub =
+    onSnapshot(
+      q,
+      async(snapshot) => {
 
 
-text =
-await decryptText(
-data.data,
-data.iv,
-roomKey
-);
+        const list: Message[] = [];
 
 
 
-}else{
+        for (const d of snapshot.docs) {
 
 
-text =
-data.text || "";
-
-}
-
-
-
-list.push({
-
-id:d.id,
-
-text,
-
-user:data.user,
-
-time:data.time
-
-});
-
-
-}
+          const data =
+            d.data();
 
 
 
-setMessages(list);
-
-
-});
+          let text = "";
 
 
 
-return ()=>unsub();
+          if (
+            data.data &&
+            data.iv
+          ) {
+
+
+            text =
+              await decryptText(
+
+                data.data,
+
+                data.iv,
+
+                roomKey
+
+              );
+
+
+          } else {
+
+
+            text =
+              data.text || "";
+
+
+          }
 
 
 
-},[
-allowed,
-roomId,
-roomKey
+          list.push({
+
+            id: d.id,
+
+            text,
+
+            user: data.user,
+
+            time: data.time
+
+          });
+
+
+        }
+
+
+
+        setMessages(list);
+
+
+      }
+    );
+
+
+
+  return () => unsub();
+
+
+}, [
+
+  allowed,
+
+  roomId,
+
+  roomKey
+
+]);
+// REMOVE USER WHEN EXIT
+
+useEffect(() => {
+
+
+  if (!allowed)
+    return;
+
+
+
+  const removeUser =
+    async () => {
+
+
+      try {
+
+
+        await updateDoc(
+
+          doc(
+            db,
+            "rooms",
+            roomId
+          ),
+
+          {
+
+            members:
+              arrayRemove(username)
+
+          }
+
+        );
+
+
+      } catch (e) {}
+
+
+    };
+
+
+
+  window.addEventListener(
+    "beforeunload",
+    removeUser
+  );
+
+
+
+  return () => {
+
+
+    window.removeEventListener(
+      "beforeunload",
+      removeUser
+    );
+
+
+  };
+
+
+}, [
+
+  allowed,
+
+  roomId,
+
+  username
+
 ]);
 
 
 
 
 
-// REMOVE USER
 
-
-useEffect(()=>{
-
-
-if(!allowed)
-return;
-
-
-
-const removeUser =
-async()=>{
-
-
-try{
-
-
-await updateDoc(
-
-doc(
-db,
-"rooms",
-roomId
-),
-
-{
-
-members:
-arrayRemove(username)
-
-}
-
-);
-
-
-
-}catch(e){}
-
-
-
-};
-
-
-
-window.addEventListener(
-"beforeunload",
-removeUser
-);
-
-
-
-return()=>{
-
-
-window.removeEventListener(
-"beforeunload",
-removeUser
-);
-
-
-};
-
-
-},[
-allowed,
-roomId,
-username
-]);
 // AUTO SCROLL
 
-useEffect(()=>{
-
-bottomRef.current?.scrollIntoView({
-
-behavior:"smooth"
-
-});
+useEffect(() => {
 
 
-},[messages]);
+  bottomRef.current?.scrollIntoView({
+
+    behavior: "smooth"
+
+  });
+
+
+}, [
+
+  messages
+
+]);
+
 
 
 
@@ -690,281 +668,299 @@ behavior:"smooth"
 
 // SEND ENCRYPTED MESSAGE
 
-
 const sendMessage =
-async()=>{
+  async () => {
 
 
-if(
-!message.trim() ||
-!roomKey
-)
-return;
-
-
-
-const encrypted =
-await encryptText(
-message,
-roomKey
-);
+    if (
+      !message.trim() ||
+      !roomKey
+    )
+      return;
 
 
 
-await addDoc(
+    const encrypted =
+      await encryptText(
 
-collection(
-db,
-"rooms",
-roomId,
-"messages"
-),
+        message,
 
-{
+        roomKey
 
-data:
-encrypted.data,
+      );
 
-iv:
-encrypted.iv,
 
-user:
-username,
 
-time:
-new Date()
+    await addDoc(
+
+      collection(
+
+        db,
+
+        "rooms",
+
+        roomId,
+
+        "messages"
+
+      ),
+
+      {
+
+        data:
+          encrypted.data,
+
+        iv:
+          encrypted.iv,
+
+        user:
+          username,
+
+        time:
+          new Date()
+
+      }
+
+    );
+
+
+
+    setMessage("");
+
+
+  };
+  if (loading) {
+
+
+  return (
+
+    <div className="chat-container">
+
+      Checking Room...
+
+    </div>
+
+  );
+
 
 }
 
-);
-
-
-
-setMessage("");
-
-};
 
 
 
 
+if (!allowed) {
 
-if(loading){
+
+  return (
+
+    <div className="chat-container">
+
+      <div className="chat-box">
+
+
+        <h2>
+          🔒 Room Full
+        </h2>
+
+
+        <p>
+          Try another room
+        </p>
+
+
+      </div>
+
+    </div>
+
+  );
+
+
+}
+
+
+
+
 
 return (
 
-<div className="chat-container">
+  <div className="chat-container">
 
-Checking Room...
 
-</div>
+    <div className="chat-box">
 
-);
 
-}
+      <ChatHeader roomId={roomId} />
 
 
 
+      <div className="online-status">
 
+        🟢 Online:
 
-if(!allowed){
+        {" "}
 
-return (
+        {onlineUsers.join(", ")}
 
-<div className="chat-container">
+      </div>
 
-<div className="chat-box">
 
-<h2>
-🔒 Room Full
-</h2>
 
-<p>
-Try another room
-</p>
 
-</div>
 
-</div>
+      {
+        typingUsers.length > 0 &&
 
-);
+        <div className="typing">
 
-}
+          ✍️ {typingUsers.join(", ")} typing...
 
+        </div>
 
+      }
 
 
 
-return (
 
-<div className="chat-container">
 
-<div className="chat-box">
 
+      <div className="messages">
 
 
-<ChatHeader roomId={roomId}/>
+        {
 
+          messages.map((msg) => (
 
 
-<div className="online-status">
+            <MessageBubble
 
-🟢 Online:
+              key={msg.id}
 
-{" "}
+              user={msg.user}
 
-{onlineUsers.join(", ")}
+              text={msg.text}
 
-</div>
+              time={msg.time}
 
+              currentUser={username}
 
+            />
 
 
-{
+          ))
 
-typingUsers.length > 0 &&
+        }
 
-<div className="typing">
 
-✍️ {typingUsers.join(", ")} typing...
 
-</div>
+        <div ref={bottomRef} />
 
-}
 
+      </div>
 
 
 
 
-<div className="messages">
 
 
-{
+      {
 
-messages.map((msg)=>(
+        showEmoji &&
 
+        <div className="emoji-box">
 
-<MessageBubble
-  key={msg.id}
-  user={msg.user}
-  text={msg.text}
-  time={msg.time}
-  currentUser={username}
-/>
 
+          <EmojiPicker
 
-))
+            onEmojiClick={(emoji) => {
 
-}
 
+              setMessage(
 
+                message + emoji.emoji
 
-<div ref={bottomRef}/>
+              );
 
 
-</div>
+              setShowEmoji(false);
 
 
+            }}
 
+          />
 
 
+        </div>
 
-{
+      }
 
-showEmoji &&
 
-<div className="emoji-box">
 
 
-<EmojiPicker
 
-onEmojiClick={(emoji)=>{
 
 
-setMessage(
+      <div className="input-box">
 
-message + emoji.emoji
 
-);
+        <button
 
+          onClick={() =>
+            setShowEmoji(!showEmoji)
+          }
 
-setShowEmoji(false);
+        >
 
+          😀
 
-}}
+        </button>
 
 
-/>
 
 
-</div>
 
-}
+        <input
 
+          value={message}
 
+          placeholder="Type message..."
 
+          onChange={(e) =>
 
+            setMessage(e.target.value)
 
-<div className="input-box">
+          }
 
+        />
 
-<button
 
-onClick={()=>setShowEmoji(!showEmoji)}
 
->
 
-😀
 
-</button>
+        <button
 
+          onClick={sendMessage}
 
+        >
 
+          Send
 
+        </button>
 
-<input
 
-value={message}
+      </div>
 
-placeholder="Type message..."
 
-onChange={(e)=>
 
-setMessage(e.target.value)
+    </div>
 
-}
 
-/>
-
-
-
-
-
-<button
-
-onClick={sendMessage}
-
->
-
-Send
-
-</button>
-
-
-
-</div>
-
-
-
-</div>
-
-</div>
-
+  </div>
 
 );
 
 
 }
-
 
 
 export default ChatRoom;
