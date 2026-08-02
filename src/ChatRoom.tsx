@@ -42,6 +42,7 @@ import {
 
 import ChatHeader from "./components/ChatHeader";
 import MessageBubble from "./components/MessageBubble";
+import VoiceCall from "./components/VoiceCall";
 
 import "./App.css";
 
@@ -758,6 +759,10 @@ return (
 
 
 <ChatHeader roomId={roomId} />
+<VoiceCall
+  roomId={roomId}
+  caller={true}
+/>
 
 
 </div>
