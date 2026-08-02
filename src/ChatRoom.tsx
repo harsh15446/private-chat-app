@@ -694,6 +694,36 @@ const deleteChatHistory = async () => {
 };
 // SEND ENCRYPTED MESSAGE
 
+const deleteChat = async () => {
+
+  const confirmDelete = window.confirm(
+    "Delete complete chat history?"
+  );
+
+  if (!confirmDelete) return;
+
+
+  const messagesRef = collection(
+    db,
+    "rooms",
+    roomId,
+    "messages"
+  );
+
+
+  const snapshot = await getDocs(messagesRef);
+
+
+  for (const d of snapshot.docs) {
+
+    await deleteDoc(d.ref);
+
+  }
+
+
+  setMessages([]);
+
+};
 const sendMessage =
   async () => {
 
@@ -824,19 +854,29 @@ return (
     <div className="chat-box">
 
 
-      <ChatHeader roomId={roomId} />
+     <div className="top-bar">
+
+  <button
+    className="delete-btn"
+    onClick={deleteChat}
+  >
+    🗑️ Delete
+  </button>
+
+  <ChatHeader roomId={roomId} />
+
+</div>
 
 
+<div className="online-status">
 
-      <div className="online-status">
+  🟢 Online:
 
-        🟢 Online:
+  {" "}
 
-        {" "}
+  {onlineUsers.join(", ")}
 
-        {onlineUsers.join(", ")}
-
-      </div>
+</div>
 
 
 
