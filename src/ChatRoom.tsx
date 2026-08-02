@@ -94,6 +94,7 @@ const data = snap.data();
 const members = data.members || [];
 
 
+// already joined user
 if(members.includes(username)){
 
 setAllowed(true);
@@ -103,18 +104,17 @@ return;
 }
 
 
+// maximum 2 users
 if(members.length >= 2){
 
-await updateDoc(roomRef,{
-members:[username]
-});
-
-setAllowed(true);
+setAllowed(false);
 setLoading(false);
 return;
 
 }
 
+
+// add second user
 
 await updateDoc(roomRef,{
 members:arrayUnion(username)
