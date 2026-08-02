@@ -127,7 +127,6 @@ body {
 .chat-header h2 {
 
   font-size: 32px;
-
   margin-bottom: 8px;
 
 }
@@ -462,7 +461,7 @@ body {
 .voice-call {
 
  left:15px;
- bottom:20px;
+ top:20px;
 
 }
 
