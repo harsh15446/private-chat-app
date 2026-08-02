@@ -1,4 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { 
+  useEffect,
+  useRef,
+  useState
+} from "react";
+
 
 import {
   addDoc,
@@ -11,170 +16,349 @@ import {
   setDoc,
   updateDoc,
   arrayUnion,
-  arrayRemove,
+  arrayRemove
 } from "firebase/firestore";
+
 
 import {
   ref,
   set,
   onValue,
   onDisconnect,
-  serverTimestamp,
+  serverTimestamp
 } from "firebase/database";
+
 
 import EmojiPicker from "emoji-picker-react";
 
-import { db, rtdb } from "./firebase";
+
+import {
+  createKey,
+  exportKey,
+  importKey,
+  encryptText,
+  decryptText
+} from "./crypto";
+
+
+import {
+  db,
+  rtdb
+} from "./firebase";
+
 
 import ChatHeader from "./components/ChatHeader";
+
 import MessageBubble from "./components/MessageBubble";
 
 import "./App.css";
 
 
+
 type Message = {
-  id:string;
-  text:string;
-  user:string;
-  time:any;
+
+id:string;
+
+data?:number[];
+
+iv?:number[];
+
+text?:string;
+
+user:string;
+
+time:any;
+
 };
+
 
 
 type Props = {
-  roomId:string;
-  username:string;
+
+roomId:string;
+
+username:string;
+
 };
 
 
-function ChatRoom({roomId, username}:Props){
 
-const [message,setMessage] = useState("");
+function ChatRoom({
 
-const [messages,setMessages] = useState<Message[]>([]);
+roomId,
 
-const [allowed,setAllowed] = useState(false);
+username
 
-const [loading,setLoading] = useState(true);
-
-const [showEmoji,setShowEmoji] = useState(false);
-
-const [onlineUsers,setOnlineUsers] = useState<string[]>([]);
-
-const [typingUsers,setTypingUsers] = useState<string[]>([]);
-
-const bottomRef = useRef<HTMLDivElement|null>(null);
+}:Props){
 
 
-// ROOM JOIN
+
+const [message,setMessage] =
+useState("");
+
+
+
+const [messages,setMessages] =
+useState<Message[]>([]);
+
+
+
+const [allowed,setAllowed] =
+useState(false);
+
+
+
+const [loading,setLoading] =
+useState(true);
+
+
+
+const [showEmoji,setShowEmoji] =
+useState(false);
+
+
+
+const [onlineUsers,setOnlineUsers] =
+useState<string[]>([]);
+
+
+
+const [typingUsers,setTypingUsers] =
+useState<string[]>([]);
+
+
+
+const [roomKey,setRoomKey] =
+useState<CryptoKey|null>(null);
+
+
+
+const bottomRef =
+useRef<HTMLDivElement|null>(null);
+// ROOM JOIN + KEY SETUP
 
 useEffect(()=>{
 
+
 async function joinRoom(){
 
-const roomRef = doc(db,"rooms",roomId);
 
-const snap = await getDoc(roomRef);
+const roomRef =
+doc(db,"rooms",roomId);
+
+
+
+const snap =
+await getDoc(roomRef);
+
 
 
 if(!snap.exists()){
 
+
+const key =
+await createKey();
+
+
+const exported =
+await exportKey(key);
+
+
+
 await setDoc(roomRef,{
-members:[username]
+
+members:[username],
+
+key:exported
+
 });
 
+
+
+setRoomKey(key);
+
 setAllowed(true);
+
 setLoading(false);
+
 return;
 
 }
 
 
-const data = snap.data();
 
-const members = data.members || [];
+const data =
+snap.data();
 
 
-// already joined user
+
+const members =
+data.members || [];
+
+
+
+
+// already joined
+
 if(members.includes(username)){
 
+
+if(data.key){
+
+const key =
+await importKey(
+data.key
+);
+
+
+setRoomKey(key);
+
+}
+
+
 setAllowed(true);
+
 setLoading(false);
+
 return;
 
 }
 
 
-// maximum 2 users
+
+
+
 if(members.length >= 2){
 
+
 setAllowed(false);
+
 setLoading(false);
+
 return;
+
 
 }
 
 
-// add second user
+
+
+if(data.key){
+
+
+const key =
+await importKey(
+data.key
+);
+
+
+setRoomKey(key);
+
+
+}
+
+
+
 
 await updateDoc(roomRef,{
-members:arrayUnion(username)
+
+members:
+arrayUnion(username)
+
 });
 
 
+
 setAllowed(true);
+
 setLoading(false);
 
 
+
 }
+
 
 
 joinRoom();
 
 
-},[roomId,username]);
+
+},[
+roomId,
+username
+]);
+
+
+
 
 
 // ONLINE STATUS
 
+
 useEffect(()=>{
+
 
 if(!allowed)return;
 
 
-const userRef = ref(
+
+const userRef =
+ref(
 rtdb,
 `rooms/${roomId}/onlineUsers/${username}`
 );
 
 
+
 set(userRef,{
+
 online:true,
+
 lastSeen:serverTimestamp()
+
 });
 
 
-onDisconnect(userRef).remove();
+
+onDisconnect(userRef)
+.remove();
 
 
-const usersRef = ref(
+
+
+const usersRef =
+ref(
 rtdb,
 `rooms/${roomId}/onlineUsers`
 );
 
 
-const unsub = onValue(usersRef,(snap)=>{
 
-const data = snap.val();
+const unsub =
+onValue(usersRef,(snap)=>{
+
+
+const data =
+snap.val();
+
 
 
 if(data){
 
+
 setOnlineUsers(
+
 Object.keys(data)
-.filter(user=>data[user].online)
+
+.filter(
+user=>data[user].online
+)
+
 );
 
+
 }else{
+
 
 setOnlineUsers([]);
 
@@ -184,21 +368,31 @@ setOnlineUsers([]);
 });
 
 
+
 return ()=>unsub();
 
 
-},[allowed,roomId,username]);
+
+},[
+allowed,
+roomId,
+username
+]);
 // TYPING STATUS
 
 useEffect(()=>{
 
+
 if(!allowed)return;
 
 
-const typingRef = ref(
+
+const typingRef =
+ref(
 rtdb,
 `rooms/${roomId}/typing/${username}`
 );
+
 
 
 set(
@@ -207,14 +401,18 @@ message.length > 0
 );
 
 
+
 return ()=>{
+
 
 set(
 typingRef,
 false
 );
 
+
 };
+
 
 
 },[
@@ -231,31 +429,39 @@ username
 
 useEffect(()=>{
 
+
 if(!allowed)return;
 
 
-const typingRef = ref(
+
+const typingRef =
+ref(
 rtdb,
 `rooms/${roomId}/typing`
 );
 
 
-const unsub = onValue(
+
+const unsub =
+onValue(
 typingRef,
 (snap)=>{
 
 
-const data = snap.val();
+const data =
+snap.val();
+
 
 
 if(data){
+
 
 setTypingUsers(
 
 Object.keys(data)
 
 .filter(
-user =>
+user=>
 user !== username &&
 data[user] === true
 )
@@ -264,6 +470,7 @@ data[user] === true
 
 
 }else{
+
 
 setTypingUsers([]);
 
@@ -276,6 +483,7 @@ setTypingUsers([]);
 return ()=>unsub();
 
 
+
 },[
 allowed,
 roomId,
@@ -285,14 +493,20 @@ username
 
 
 
-// LOAD MESSAGES
+
+// LOAD + DECRYPT MESSAGES
+
 
 useEffect(()=>{
 
-if(!allowed)return;
+
+if(!allowed || !roomKey)
+return;
 
 
-const q = query(
+
+const q =
+query(
 
 collection(
 db,
@@ -307,63 +521,117 @@ orderBy("time")
 
 
 
-const unsub = onSnapshot(
+const unsub =
+onSnapshot(
 q,
-(snapshot)=>{
+async(snapshot)=>{
 
 
-setMessages(
+const list:Message[]=[];
 
-snapshot.docs.map(
-(doc)=>({
 
-id:doc.id,
 
-...(doc.data() as Omit<Message,"id">)
+for(const d of snapshot.docs){
 
-})
 
-)
+const data =
+d.data();
 
+
+
+let text="";
+
+
+
+if(
+data.data &&
+data.iv
+){
+
+
+text =
+await decryptText(
+data.data,
+data.iv,
+roomKey
 );
+
+
+
+}else{
+
+
+text =
+data.text || "";
+
+}
+
+
+
+list.push({
+
+id:d.id,
+
+text,
+
+user:data.user,
+
+time:data.time
+
+});
+
+
+}
+
+
+
+setMessages(list);
 
 
 });
 
 
+
 return ()=>unsub();
+
 
 
 },[
 allowed,
-roomId
+roomId,
+roomKey
 ]);
 
 
 
 
-// REMOVE MEMBER WHEN EXIT
+
+// REMOVE USER
+
 
 useEffect(()=>{
 
-if(!allowed)return;
 
-
-const roomRef = doc(
-db,
-"rooms",
-roomId
-);
+if(!allowed)
+return;
 
 
 
-const removeUser = async()=>{
+const removeUser =
+async()=>{
 
 
 try{
 
+
 await updateDoc(
-roomRef,
+
+doc(
+db,
+"rooms",
+roomId
+),
+
 {
 
 members:
@@ -373,7 +641,10 @@ arrayRemove(username)
 
 );
 
+
+
 }catch(e){}
+
 
 
 };
@@ -387,12 +658,14 @@ removeUser
 
 
 
-return ()=>{
+return()=>{
+
 
 window.removeEventListener(
 "beforeunload",
 removeUser
 );
+
 
 };
 
@@ -402,10 +675,6 @@ allowed,
 roomId,
 username
 ]);
-
-
-
-
 // AUTO SCROLL
 
 useEffect(()=>{
@@ -422,12 +691,28 @@ behavior:"smooth"
 
 
 
-// SEND MESSAGE
 
-const sendMessage = async()=>{
+// SEND ENCRYPTED MESSAGE
 
 
-if(!message.trim())return;
+const sendMessage =
+async()=>{
+
+
+if(
+!message.trim() ||
+!roomKey
+)
+return;
+
+
+
+const encrypted =
+await encryptText(
+message,
+roomKey
+);
+
 
 
 await addDoc(
@@ -441,20 +726,32 @@ roomId,
 
 {
 
-text:message,
+data:
+encrypted.data,
 
-user:username,
+iv:
+encrypted.iv,
 
-time:new Date()
+user:
+username,
+
+time:
+new Date()
 
 }
 
 );
 
 
+
 setMessage("");
 
 };
+
+
+
+
+
 if(loading){
 
 return (
@@ -468,6 +765,8 @@ Checking Room...
 );
 
 }
+
+
 
 
 
@@ -494,6 +793,8 @@ Try another room
 );
 
 }
+
+
 
 
 
@@ -537,6 +838,7 @@ typingUsers.length > 0 &&
 
 
 
+
 <div className="messages">
 
 
@@ -551,7 +853,7 @@ key={msg.id}
 
 user={msg.user}
 
-text={msg.text}
+text={msg.text || ""}
 
 currentUser={username}
 
@@ -561,14 +863,20 @@ currentUser={username}
 
 ))
 
-
 }
+
 
 
 <div ref={bottomRef}/>
 
 
 </div>
+
+
+
+
+
+
 {
 
 showEmoji &&
@@ -606,7 +914,6 @@ setShowEmoji(false);
 
 
 <div className="input-box">
-
 
 
 <button
@@ -657,8 +964,6 @@ Send
 
 
 
-
-
 </div>
 
 </div>
@@ -668,6 +973,7 @@ Send
 
 
 }
+
 
 
 export default ChatRoom;
