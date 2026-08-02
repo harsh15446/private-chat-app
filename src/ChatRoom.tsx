@@ -15,7 +15,9 @@ import {
   setDoc,
   updateDoc,
   arrayUnion,
-  arrayRemove
+  arrayRemove,
+  deleteDoc,
+  getDocs
 } from "firebase/firestore";
 
 import {
@@ -665,7 +667,30 @@ useEffect(() => {
 
 
 
+const deleteChatHistory = async () => {
 
+  const ok = window.confirm(
+    "Chat permanently delete karni hai?"
+  );
+
+  if (!ok) return;
+
+  const messagesRef = collection(
+    db,
+    "rooms",
+    roomId,
+    "messages"
+  );
+
+  const snapshot = await getDocs(messagesRef);
+
+  for (const msg of snapshot.docs) {
+    await deleteDoc(msg.ref);
+  }
+
+  alert("✅ Chat history deleted.");
+
+};
 // SEND ENCRYPTED MESSAGE
 
 const sendMessage =
@@ -940,8 +965,14 @@ return (
         <button
 
           onClick={sendMessage}
+          
 
         >
+          <button
+  onClick={deleteChatHistory}
+>
+  🗑 Delete Chat
+</button>
 
           Send
 
