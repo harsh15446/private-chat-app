@@ -45,6 +45,7 @@ import ChatHeader from "./components/ChatHeader";
 import MessageBubble from "./components/MessageBubble";
 
 import "./App.css";
+import wallpaper from "./assets/wallpaper.jpg";
 
 
 type Message = {
@@ -759,7 +760,15 @@ const sendMessage =
 
   return (
 
-    <div className="chat-container">
+    <div
+  className="chat-container"
+  style={{
+    backgroundImage: `url(${wallpaper})`,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+  }}
+>
 
       Checking Room...
 
