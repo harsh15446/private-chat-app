@@ -191,12 +191,12 @@ lastSeen:serverTimestamp()
 
 
 
-onDisconnect(userRef)
-.set({
+window.addEventListener("beforeunload",()=>{
 
-online:false,
-
-lastSeen:serverTimestamp()
+set(userRef,{
+  online:false,
+  lastSeen:serverTimestamp()
+});
 
 });
 
