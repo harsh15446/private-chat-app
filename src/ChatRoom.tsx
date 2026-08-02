@@ -13,9 +13,17 @@ import {
   arrayUnion,
 } from "firebase/firestore";
 
+import {
+  ref,
+  set,
+  onValue,
+  onDisconnect,
+  serverTimestamp,
+} from "firebase/database";
+
 import EmojiPicker from "emoji-picker-react";
 
-import { db } from "./firebase";
+import { db, rtdb } from "./firebase";
 
 import ChatHeader from "./components/ChatHeader";
 import MessageBubble from "./components/MessageBubble";
@@ -27,7 +35,7 @@ type Message = {
   id:string;
   text:string;
   user:string;
-  time?:any;
+  time:any;
 };
 
 
@@ -47,21 +55,23 @@ username
 const [message,setMessage] =
 useState("");
 
-
 const [messages,setMessages] =
 useState<Message[]>([]);
-
 
 const [allowed,setAllowed] =
 useState(false);
 
-
 const [loading,setLoading] =
 useState(true);
 
-
 const [showEmoji,setShowEmoji] =
 useState(false);
+
+const [onlineUsers,setOnlineUsers] =
+useState<string[]>([]);
+
+const [typingUsers,setTypingUsers] =
+useState<string[]>([]);
 
 
 
@@ -70,8 +80,7 @@ useRef<HTMLDivElement|null>(null);
 
 
 
-
-// 🔒 ROOM LOCK
+// ROOM CHECK
 
 useEffect(()=>{
 
@@ -83,7 +92,6 @@ const roomRef =
 doc(db,"rooms",roomId);
 
 
-
 const snap =
 await getDoc(roomRef);
 
@@ -93,17 +101,12 @@ if(!snap.exists()){
 
 
 await setDoc(roomRef,{
-
-members:[
-username
-]
-
+members:[username]
 });
 
 
 setAllowed(true);
 setLoading(false);
-
 return;
 
 }
@@ -121,10 +124,8 @@ data.members || [];
 
 if(members.includes(username)){
 
-
 setAllowed(true);
 setLoading(false);
-
 return;
 
 }
@@ -133,14 +134,10 @@ return;
 
 if(members.length >= 2){
 
-
-alert(
-"🔒 Room Full hai. Sirf 2 users allowed hain."
-);
-
-
 setAllowed(false);
 setLoading(false);
+
+alert("Room Full");
 
 return;
 
@@ -149,10 +146,7 @@ return;
 
 
 await updateDoc(roomRef,{
-
-members:
-arrayUnion(username)
-
+members:arrayUnion(username)
 });
 
 
@@ -166,7 +160,206 @@ setLoading(false);
 checkRoom();
 
 
+},[roomId,username]);
+
+
+// ONLINE START
+
+// 🟢 ONLINE STATUS
+
+useEffect(()=>{
+
+
+if(!allowed) return;
+
+
+const userRef =
+ref(
+rtdb,
+`rooms/${roomId}/onlineUsers/${username}`
+);
+
+
+
+set(userRef,{
+
+online:true,
+
+lastSeen:serverTimestamp()
+
+});
+
+
+
+onDisconnect(userRef)
+.set({
+
+online:false,
+
+lastSeen:serverTimestamp()
+
+});
+
+
+
+const usersRef =
+ref(
+rtdb,
+`rooms/${roomId}/onlineUsers`
+);
+
+
+
+const unsubscribe =
+onValue(usersRef,(snap)=>{
+
+
+const data =
+snap.val();
+
+
+
+if(data){
+
+
+const users =
+Object.keys(data)
+.filter(
+user => data[user].online
+);
+
+
+setOnlineUsers(users);
+
+
+}else{
+
+
+setOnlineUsers([]);
+
+}
+
+
+});
+
+
+
+return ()=>unsubscribe();
+
+
 },[
+allowed,
+roomId,
+username
+]);
+
+
+
+
+
+// ✍️ TYPING STATUS
+
+useEffect(()=>{
+
+
+if(!allowed)return;
+
+
+const typingRef =
+ref(
+rtdb,
+`rooms/${roomId}/typing/${username}`
+);
+
+
+
+set(
+typingRef,
+message.length > 0
+);
+
+
+
+return ()=>{
+
+set(
+typingRef,
+false
+);
+
+};
+
+
+},[
+message,
+allowed,
+roomId,
+username
+]);
+
+
+
+
+
+
+// 👀 LISTEN TYPING
+
+useEffect(()=>{
+
+
+if(!allowed)return;
+
+
+
+const typingRef =
+ref(
+rtdb,
+`rooms/${roomId}/typing`
+);
+
+
+
+const unsubscribe =
+onValue(
+typingRef,
+(snap)=>{
+
+
+const data =
+snap.val();
+
+
+if(data){
+
+
+setTypingUsers(
+
+Object.keys(data)
+.filter(
+user =>
+data[user] === true &&
+user !== username
+)
+
+);
+
+
+}else{
+
+
+setTypingUsers([]);
+
+}
+
+
+});
+
+
+return ()=>unsubscribe();
+
+
+},[
+allowed,
 roomId,
 username
 ]);
@@ -176,7 +369,6 @@ username
 
 
 // 💬 LOAD MESSAGES
-
 
 useEffect(()=>{
 
@@ -220,6 +412,7 @@ id:doc.id,
 });
 
 
+
 return ()=>unsubscribe();
 
 
@@ -228,7 +421,11 @@ allowed,
 roomId
 ]);
  
+
+// AUTO SCROLL
+
 useEffect(()=>{
+
 
 bottomRef.current?.scrollIntoView({
 
@@ -236,11 +433,14 @@ behavior:"smooth"
 
 });
 
+
 },[messages]);
 
 
 
 
+
+// SEND MESSAGE
 
 const sendMessage =
 async()=>{
@@ -248,6 +448,7 @@ async()=>{
 
 if(!message.trim())
 return;
+
 
 
 await addDoc(
@@ -272,6 +473,7 @@ time:new Date()
 );
 
 
+
 setMessage("");
 
 };
@@ -283,7 +485,7 @@ setMessage("");
 
 if(loading){
 
-return(
+return (
 
 <div className="chat-container">
 
@@ -301,18 +503,18 @@ Checking Room...
 
 if(!allowed){
 
-return(
+return (
 
 <div className="chat-container">
 
 <div className="chat-box">
 
 <h2>
-🔒 Room Locked
+🔒 Room Full
 </h2>
 
 <p>
-Only 2 users allowed.
+Only 2 users allowed
 </p>
 
 </div>
@@ -327,7 +529,7 @@ Only 2 users allowed.
 
 
 
-return(
+return (
 
 <div className="chat-container">
 
@@ -338,11 +540,38 @@ return(
 
 
 
+<div className="online-status">
+
+🟢 Online:
+{" "}
+{onlineUsers.join(", ")}
+
+</div>
+
+
+
+{
+typingUsers.length > 0 &&
+
+<div className="typing">
+
+✍️ {typingUsers.join(", ")} typing...
+
+</div>
+
+}
+
+
+
+
+
 <div className="messages">
 
 
 {
+
 messages.map((msg)=>(
+
 
 <MessageBubble
 
@@ -355,6 +584,7 @@ text={msg.text}
 currentUser={username}
 
 />
+
 
 ))
 
@@ -371,22 +601,28 @@ currentUser={username}
 
 
 
-{showEmoji && (
+{
+showEmoji &&
 
-<div>
+<div className="emoji-box">
 
 <EmojiPicker
 
 onEmojiClick={(emoji)=>{
-  setMessage(message + emoji.emoji);
-  setShowEmoji(false);
+
+setMessage(
+message + emoji.emoji
+);
+
+setShowEmoji(false);
+
 }}
 
 />
 
 </div>
 
-)}
+}
 
 
 
@@ -397,9 +633,13 @@ onEmojiClick={(emoji)=>{
 
 
 <button
-onClick={() => setShowEmoji((prev) => !prev)}
+
+onClick={()=>setShowEmoji(!showEmoji)}
+
 >
+
 😀
+
 </button>
 
 
@@ -421,13 +661,15 @@ setMessage(e.target.value)
 
 
 
+<button
 
-<button onClick={sendMessage}>
+onClick={sendMessage}
+
+>
 
 Send
 
 </button>
-
 
 
 </div>
