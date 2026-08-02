@@ -15,7 +15,6 @@ import {
   setDoc,
   updateDoc,
   arrayUnion,
-  arrayRemove,
   deleteDoc,
   getDocs
 } from "firebase/firestore";
@@ -45,6 +44,7 @@ import ChatHeader from "./components/ChatHeader";
 import MessageBubble from "./components/MessageBubble";
 
 import "./App.css";
+
 import wallpaper from "./assets/wallpaper.jpg";
 
 
@@ -117,40 +117,95 @@ function ChatRoom({
 
   const bottomRef =
     useRef<HTMLDivElement | null>(null);
-    // E2EE ROOM JOIN
-
-useEffect(() => {
-
-
-  async function joinRoom() {
-
-
-    const key =
-      await createRoomKey(roomId);
-
-
-    setRoomKey(key);
 
 
 
-    const roomRef =
-      doc(db, "rooms", roomId);
+  // CREATE / JOIN ROOM
+
+  useEffect(() => {
+
+
+    async function joinRoom() {
+
+
+      const key =
+        await createRoomKey(roomId);
+
+
+      setRoomKey(key);
 
 
 
-    const snap =
-      await getDoc(roomRef);
+      const roomRef =
+        doc(db, "rooms", roomId);
 
 
 
-    // CREATE NEW ROOM
+      const snap =
+        await getDoc(roomRef);
 
-    if (!snap.exists()) {
 
 
-      await setDoc(roomRef, {
+      if (!snap.exists()) {
 
-        members: [username]
+
+        await setDoc(roomRef, {
+
+          members: [username]
+
+        });
+
+
+        setAllowed(true);
+
+        setLoading(false);
+
+        return;
+
+      }
+
+
+
+      const data =
+        snap.data();
+
+
+
+      const members =
+        data.members || [];
+
+
+
+      if (members.includes(username)) {
+
+
+        setAllowed(true);
+
+        setLoading(false);
+
+        return;
+
+      }
+
+
+
+      if (members.length >= 2) {
+
+
+        setAllowed(false);
+
+        setLoading(false);
+
+        return;
+
+      }
+
+
+
+      await updateDoc(roomRef, {
+
+        members:
+          arrayUnion(username)
 
       });
 
@@ -159,89 +214,26 @@ useEffect(() => {
 
       setLoading(false);
 
-      return;
 
     }
 
 
 
-    const data =
-      snap.data();
+    joinRoom();
 
 
+  }, [
 
-    const members =
-      data.members || [];
+    roomId,
 
+    username
 
-
-    // SAME USER REJOIN
-
-    if (members.includes(username)) {
-
-
-      setAllowed(true);
-
-      setLoading(false);
-
-      return;
-
-    }
-
-
-
-    // ONLY 2 USERS ALLOWED
-
-    if (members.length >= 2) {
-
-
-      setAllowed(false);
-
-      setLoading(false);
-
-      return;
-
-    }
-
-
-
-    // ADD SECOND USER
-
-    await updateDoc(roomRef, {
-
-      members:
-        arrayUnion(username)
-
-    });
-
-
-
-    setAllowed(true);
-
-    setLoading(false);
-
-
-  }
-
-
-
-  joinRoom();
-
-
-}, [
-
-  roomId,
-
-  username
-
-]);
-// ONLINE STATUS
+  ]);
+  // ONLINE USERS
 
 useEffect(() => {
 
-
   if (!allowed) return;
-
 
 
   const userRef =
@@ -251,7 +243,6 @@ useEffect(() => {
     );
 
 
-
   set(userRef, {
 
     online: true,
@@ -259,7 +250,6 @@ useEffect(() => {
     lastSeen: serverTimestamp()
 
   });
-
 
 
   onDisconnect(userRef)
@@ -272,7 +262,6 @@ useEffect(() => {
       rtdb,
       `rooms/${roomId}/onlineUsers`
     );
-
 
 
   const unsub =
@@ -290,7 +279,6 @@ useEffect(() => {
         setOnlineUsers(
 
           Object.keys(data)
-
             .filter(
               user => data[user].online
             )
@@ -332,9 +320,7 @@ useEffect(() => {
 
 useEffect(() => {
 
-
   if (!allowed) return;
-
 
 
   const typingRef =
@@ -344,12 +330,10 @@ useEffect(() => {
     );
 
 
-
   set(
     typingRef,
     message.length > 0
   );
-
 
 
   return () => {
@@ -389,13 +373,11 @@ useEffect(() => {
   if (!allowed) return;
 
 
-
   const typingRef =
     ref(
       rtdb,
       `rooms/${roomId}/typing`
     );
-
 
 
   const unsub =
@@ -438,7 +420,6 @@ useEffect(() => {
     );
 
 
-
   return () => unsub();
 
 
@@ -456,7 +437,8 @@ useEffect(() => {
 
 
 
-// LOAD + DECRYPT MESSAGES
+
+// LOAD MESSAGES
 
 useEffect(() => {
 
@@ -570,165 +552,64 @@ useEffect(() => {
   roomKey
 
 ]);
-// REMOVE USER WHEN EXIT
-
-useEffect(() => {
-
-
-  if (!allowed)
-    return;
-
-
-
-  const removeUser =
-    async () => {
-
-
-      try {
-
-
-        await updateDoc(
-
-          doc(
-            db,
-            "rooms",
-            roomId
-          ),
-
-          {
-
-            members:
-              arrayRemove(username)
-
-          }
-
-        );
-
-
-      } catch (e) {}
-
-
-    };
-
-
-
-  window.addEventListener(
-    "beforeunload",
-    removeUser
-  );
-
-
-
-  return () => {
-
-
-    window.removeEventListener(
-      "beforeunload",
-      removeUser
-    );
-
-
-  };
-
-
-}, [
-
-  allowed,
-
-  roomId,
-
-  username
-
-]);
 
 
 
 
 
-
-// AUTO SCROLL
-
-useEffect(() => {
-
-
-  bottomRef.current?.scrollIntoView({
-
-    behavior: "smooth"
-
-  });
-
-
-}, [
-
-  messages
-
-]);
-
-
-
-
-
-const deleteChatHistory = async () => {
-
-  const ok = window.confirm(
-    "Chat permanently delete karni hai?"
-  );
-
-  if (!ok) return;
-
-  const messagesRef = collection(
-    db,
-    "rooms",
-    roomId,
-    "messages"
-  );
-
-  const snapshot = await getDocs(messagesRef);
-
-  for (const msg of snapshot.docs) {
-    await deleteDoc(msg.ref);
-  }
-
-  alert("✅ Chat history deleted.");
-
-};
-// SEND ENCRYPTED MESSAGE
+// DELETE CHAT
 
 const deleteChat = async () => {
 
-  const confirmDelete = window.confirm(
-    "Delete complete chat history?"
-  );
 
-  if (!confirmDelete) return;
-
-
-  const messagesRef = collection(
-    db,
-    "rooms",
-    roomId,
-    "messages"
-  );
+  const ok =
+    window.confirm(
+      "Delete complete chat?"
+    );
 
 
-  const snapshot = await getDocs(messagesRef);
+  if (!ok) return;
 
 
-  for (const d of snapshot.docs) {
 
-    await deleteDoc(d.ref);
+  const messagesRef =
+    collection(
+      db,
+      "rooms",
+      roomId,
+      "messages"
+    );
+
+
+
+  const snap =
+    await getDocs(messagesRef);
+
+
+
+  for (const item of snap.docs) {
+
+    await deleteDoc(item.ref);
 
   }
 
 
   setMessages([]);
 
+
 };
+
+
+
+
+
+// SEND MESSAGE
+
 const sendMessage =
   async () => {
 
 
-    if (
+    if(
       !message.trim() ||
       !roomKey
     )
@@ -780,32 +661,32 @@ const sendMessage =
     );
 
 
-
     setMessage("");
 
 
   };
   if (loading) {
 
-
   return (
 
     <div
-  className="chat-container"
-  style={{
-    backgroundImage: `url(${wallpaper})`,
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    backgroundRepeat: "no-repeat",
-  }}
->
+      className="chat-container"
+      style={{
+        backgroundImage: `url(${wallpaper})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center"
+      }}
+    >
 
-      Checking Room...
+      <div className="chat-box">
+
+        Checking Room...
+
+      </div>
 
     </div>
 
   );
-
 
 }
 
@@ -815,30 +696,32 @@ const sendMessage =
 
 if (!allowed) {
 
-
   return (
 
-    <div className="chat-container">
+    <div
+      className="chat-container"
+      style={{
+        backgroundImage: `url(${wallpaper})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center"
+      }}
+    >
 
       <div className="chat-box">
-
 
         <h2>
           🔒 Room Full
         </h2>
 
-
         <p>
           Try another room
         </p>
-
 
       </div>
 
     </div>
 
   );
-
 
 }
 
@@ -848,33 +731,48 @@ if (!allowed) {
 
 return (
 
-  <div className="chat-container">
+<div
+  className="chat-container"
+  style={{
+    backgroundImage: `url(${wallpaper})`,
+    backgroundSize: "cover",
+    backgroundPosition: "center"
+  }}
+>
 
 
-    <div className="chat-box">
+<div className="chat-box">
 
 
-     <div className="top-bar">
 
-  <button
-    className="delete-btn"
-    onClick={deleteChat}
-  >
-    🗑️ Delete
-  </button>
+<div className="chat-top">
 
-  <ChatHeader roomId={roomId} />
+
+<button
+  className="delete-btn"
+  onClick={deleteChat}
+>
+  🗑️
+</button>
+
+
+
+<ChatHeader roomId={roomId} />
+
 
 </div>
+
+
+
 
 
 <div className="online-status">
 
-  🟢 Online:
+🟢 Online:
 
-  {" "}
+{" "}
 
-  {onlineUsers.join(", ")}
+{onlineUsers.join(", ")}
 
 </div>
 
@@ -882,160 +780,159 @@ return (
 
 
 
-      {
-        typingUsers.length > 0 &&
 
-        <div className="typing">
+{
+typingUsers.length > 0 &&
 
-          ✍️ {typingUsers.join(", ")} typing...
+<div className="typing">
 
-        </div>
+✍️ {typingUsers.join(", ")} typing...
 
-      }
+</div>
 
+}
 
 
 
 
 
-      <div className="messages">
 
 
-        {
+<div className="messages">
 
-          messages.map((msg) => (
 
+{
 
-            <MessageBubble
+messages.map((msg)=>(
 
-              key={msg.id}
+<MessageBubble
 
-              user={msg.user}
+key={msg.id}
 
-              text={msg.text}
+user={msg.user}
 
-              time={msg.time}
+text={msg.text}
 
-              currentUser={username}
+time={msg.time}
 
-            />
+currentUser={username}
 
+/>
 
-          ))
+))
 
-        }
+}
 
 
+<div ref={bottomRef}/>
 
-        <div ref={bottomRef} />
 
+</div>
 
-      </div>
 
 
 
 
 
 
-      {
+{
 
-        showEmoji &&
+showEmoji &&
 
-        <div className="emoji-box">
+<div className="emoji-box">
 
+<EmojiPicker
 
-          <EmojiPicker
+onEmojiClick={(emoji)=>{
 
-            onEmojiClick={(emoji) => {
 
+setMessage(
 
-              setMessage(
+message + emoji.emoji
 
-                message + emoji.emoji
+);
 
-              );
 
+setShowEmoji(false);
 
-              setShowEmoji(false);
 
+}}
 
-            }}
+/>
 
-          />
+</div>
 
+}
 
-        </div>
 
-      }
 
 
 
 
 
+<div className="input-box">
 
 
-      <div className="input-box">
 
+<button
 
-        <button
+onClick={()=>
+setShowEmoji(!showEmoji)
+}
 
-          onClick={() =>
-            setShowEmoji(!showEmoji)
-          }
-
-        >
-
-          😀
-
-        </button>
-
-
-
-
-
-        <input
-
-          value={message}
-
-          placeholder="Type message..."
-
-          onChange={(e) =>
-
-            setMessage(e.target.value)
-
-          }
-
-        />
-
-
-
-
-
-        <button
-
-          onClick={sendMessage}
-          
-
-        >
-          <button
-  onClick={deleteChatHistory}
 >
-  🗑 Delete Chat
+
+😀
+
 </button>
 
-          Send
-
-        </button>
-
-
-      </div>
 
 
 
-    </div>
 
 
-  </div>
+<input
+
+value={message}
+
+placeholder="Type message..."
+
+onChange={(e)=>
+
+setMessage(e.target.value)
+
+}
+
+/>
+
+
+
+
+
+
+<button
+
+onClick={sendMessage}
+
+>
+
+Send
+
+</button>
+
+
+
+
+
+</div>
+
+
+
+
+
+</div>
+
+</div>
 
 );
 
