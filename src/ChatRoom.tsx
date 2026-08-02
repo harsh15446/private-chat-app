@@ -20,6 +20,7 @@ import {
   onValue,
   onDisconnect,
   serverTimestamp,
+  remove,
 } from "firebase/database";
 
 import EmojiPicker from "emoji-picker-react";
@@ -46,241 +47,135 @@ type Props = {
 };
 
 
+function ChatRoom({roomId, username}:Props){
 
-function ChatRoom({
+const [message,setMessage] = useState("");
 
-roomId,
+const [messages,setMessages] = useState<Message[]>([]);
 
-username
+const [allowed,setAllowed] = useState(false);
 
-}:Props){
+const [loading,setLoading] = useState(true);
 
+const [showEmoji,setShowEmoji] = useState(false);
 
+const [onlineUsers,setOnlineUsers] = useState<string[]>([]);
 
-const [message,setMessage] =
-useState("");
+const [typingUsers,setTypingUsers] = useState<string[]>([]);
 
-
-
-const [messages,setMessages] =
-useState<Message[]>([]);
-
+const bottomRef = useRef<HTMLDivElement|null>(null);
 
 
-const [allowed,setAllowed] =
-useState(false);
-
-
-
-const [loading,setLoading] =
-useState(true);
-
-
-
-const [showEmoji,setShowEmoji] =
-useState(false);
-
-
-
-const [onlineUsers,setOnlineUsers] =
-useState<string[]>([]);
-
-
-
-const [typingUsers,setTypingUsers] =
-useState<string[]>([]);
-
-
-
-const bottomRef =
-useRef<HTMLDivElement|null>(null);
-
-
-
-
-
-// ROOM JOIN + CLEANUP
-
+// ROOM JOIN
 
 useEffect(()=>{
 
-
 async function joinRoom(){
 
+const roomRef = doc(db,"rooms",roomId);
 
-const roomRef =
-doc(db,"rooms",roomId);
-
-
-
-const snap =
-await getDoc(roomRef);
-
-
+const snap = await getDoc(roomRef);
 
 
 if(!snap.exists()){
 
-
 await setDoc(roomRef,{
-
 members:[username]
-
 });
 
-
 setAllowed(true);
-
 setLoading(false);
-
 return;
 
 }
 
 
+const data = snap.data();
 
-const data =
-snap.data();
-
-
-
-const members =
-data.members || [];
-
-
+const members = data.members || [];
 
 
 if(members.includes(username)){
 
-
 setAllowed(true);
-
 setLoading(false);
-
 return;
 
 }
-
-
 
 
 if(members.length >= 2){
 
+await updateDoc(roomRef,{
+members:[username]
+});
 
-setAllowed(false);
-
+setAllowed(true);
 setLoading(false);
-
-
 return;
 
-
 }
-
-
 
 
 await updateDoc(roomRef,{
-
-members:
-arrayUnion(username)
-
+members:arrayUnion(username)
 });
 
 
-
 setAllowed(true);
-
 setLoading(false);
 
 
-
 }
-
 
 
 joinRoom();
 
 
+},[roomId,username]);
 
-},[
-roomId,
-username
-]);
- 
 
-// 🟢 ONLINE / OFFLINE STATUS
+// ONLINE STATUS
 
 useEffect(()=>{
 
-
-if(!allowed) return;
-
+if(!allowed)return;
 
 
-const userRef =
-ref(
+const userRef = ref(
 rtdb,
 `rooms/${roomId}/onlineUsers/${username}`
 );
 
 
-
 set(userRef,{
-
 online:true,
-
 lastSeen:serverTimestamp()
-
 });
 
 
-
-onDisconnect(userRef)
-.set({
-
-online:false,
-
-lastSeen:serverTimestamp()
-
-});
+onDisconnect(userRef).remove();
 
 
-
-
-const usersRef =
-ref(
+const usersRef = ref(
 rtdb,
 `rooms/${roomId}/onlineUsers`
 );
 
 
+const unsub = onValue(usersRef,(snap)=>{
 
-const unsubscribe =
-onValue(usersRef,(snap)=>{
-
-
-const data =
-snap.val();
-
+const data = snap.val();
 
 
 if(data){
 
-
 setOnlineUsers(
-
 Object.keys(data)
-
-.filter(
-user => data[user].online
-)
-
+.filter(user=>data[user].online)
 );
 
-
 }else{
-
 
 setOnlineUsers([]);
 
@@ -290,38 +185,21 @@ setOnlineUsers([]);
 });
 
 
-
-return ()=>unsubscribe();
-
+return ()=>unsub();
 
 
-},[
-allowed,
-roomId,
-username
-]);
-
-
-
-
-
-
-// ✍️ TYPING STATUS
-
+},[allowed,roomId,username]);
+// TYPING STATUS
 
 useEffect(()=>{
-
 
 if(!allowed)return;
 
 
-
-const typingRef =
-ref(
+const typingRef = ref(
 rtdb,
 `rooms/${roomId}/typing/${username}`
 );
-
 
 
 set(
@@ -330,18 +208,14 @@ message.length > 0
 );
 
 
-
 return ()=>{
-
 
 set(
 typingRef,
 false
 );
 
-
 };
-
 
 
 },[
@@ -354,36 +228,28 @@ username
 
 
 
-
-// 👀 LISTEN TYPING
-
+// LISTEN TYPING
 
 useEffect(()=>{
-
 
 if(!allowed)return;
 
 
-
-const typingRef =
-ref(
+const typingRef = ref(
 rtdb,
 `rooms/${roomId}/typing`
 );
 
 
+const unsub = onValue(
+typingRef,
+(snap)=>{
 
-const unsubscribe =
-onValue(typingRef,(snap)=>{
 
-
-const data =
-snap.val();
-
+const data = snap.val();
 
 
 if(data){
-
 
 setTypingUsers(
 
@@ -400,7 +266,6 @@ data[user] === true
 
 }else{
 
-
 setTypingUsers([]);
 
 }
@@ -409,9 +274,7 @@ setTypingUsers([]);
 });
 
 
-
-return ()=>unsubscribe();
-
+return ()=>unsub();
 
 
 },[
@@ -419,20 +282,18 @@ allowed,
 roomId,
 username
 ]);
- 
 
-// 💬 LOAD MESSAGES
 
+
+
+// LOAD MESSAGES
 
 useEffect(()=>{
-
 
 if(!allowed)return;
 
 
-
-const q =
-query(
+const q = query(
 
 collection(
 db,
@@ -447,19 +308,23 @@ orderBy("time")
 
 
 
-const unsubscribe =
-onSnapshot(q,(snapshot)=>{
+const unsub = onSnapshot(
+q,
+(snapshot)=>{
 
 
 setMessages(
 
-snapshot.docs.map(doc=>({
+snapshot.docs.map(
+(doc)=>({
 
 id:doc.id,
 
 ...(doc.data() as Omit<Message,"id">)
 
-}))
+})
+
+)
 
 );
 
@@ -467,9 +332,7 @@ id:doc.id,
 });
 
 
-
-return ()=>unsubscribe();
-
+return ()=>unsub();
 
 
 },[
@@ -480,25 +343,28 @@ roomId
 
 
 
-
-
-// 🧹 REMOVE USER WHEN LEAVE
-
+// REMOVE MEMBER WHEN EXIT
 
 useEffect(()=>{
 
-
 if(!allowed)return;
+
+
+const roomRef = doc(
+db,
+"rooms",
+roomId
+);
 
 
 
 const removeUser = async()=>{
 
 
+try{
+
 await updateDoc(
-
-doc(db,"rooms",roomId),
-
+roomRef,
 {
 
 members:
@@ -507,6 +373,8 @@ arrayRemove(username)
 }
 
 );
+
+}catch(e){}
 
 
 };
@@ -520,14 +388,12 @@ removeUser
 
 
 
-return()=>{
-
+return ()=>{
 
 window.removeEventListener(
 "beforeunload",
 removeUser
 );
-
 
 };
 
@@ -541,14 +407,9 @@ username
 
 
 
-
-
-
 // AUTO SCROLL
 
-
 useEffect(()=>{
-
 
 bottomRef.current?.scrollIntoView({
 
@@ -557,25 +418,17 @@ behavior:"smooth"
 });
 
 
-},[
-messages
-]);
-
-
+},[messages]);
 
 
 
 
 // SEND MESSAGE
 
-
-const sendMessage =
-async()=>{
+const sendMessage = async()=>{
 
 
-if(!message.trim())
-return;
-
+if(!message.trim())return;
 
 
 await addDoc(
@@ -600,11 +453,9 @@ time:new Date()
 );
 
 
-
 setMessage("");
 
 };
-
 if(loading){
 
 return (
@@ -618,7 +469,6 @@ Checking Room...
 );
 
 }
-
 
 
 
@@ -645,8 +495,6 @@ Try another room
 );
 
 }
-
-
 
 
 
@@ -690,7 +538,6 @@ typingUsers.length > 0 &&
 
 
 
-
 <div className="messages">
 
 
@@ -723,13 +570,6 @@ currentUser={username}
 
 
 </div>
-
-
-
-
-
-
-
 {
 
 showEmoji &&
@@ -752,7 +592,6 @@ message + emoji.emoji
 setShowEmoji(false);
 
 
-
 }}
 
 
@@ -762,8 +601,6 @@ setShowEmoji(false);
 </div>
 
 }
-
-
 
 
 
@@ -804,6 +641,7 @@ setMessage(e.target.value)
 
 
 
+
 <button
 
 onClick={sendMessage}
@@ -831,7 +669,6 @@ Send
 
 
 }
-
 
 
 export default ChatRoom;
