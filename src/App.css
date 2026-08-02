@@ -389,3 +389,90 @@ body {
 
 
 }
+/* FLOATING CALL BUTTON */
+
+.voice-call {
+  position: fixed;
+  left: 20px;
+  bottom: 25px;
+  z-index: 999;
+}
+
+
+.voice-call > button {
+
+  width: 65px;
+  height: 65px;
+
+  border-radius: 50%;
+
+  padding: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 28px;
+
+  background: #16a34a;
+
+  color: white;
+
+  border: none;
+
+  box-shadow:
+    0 8px 25px rgba(0,0,0,.35);
+
+}
+
+
+
+/* CALL PANEL */
+
+.call-panel,
+.incoming-call {
+
+  position: fixed;
+
+  left: 20px;
+  bottom: 25px;
+
+  width: 260px;
+
+  padding: 20px;
+
+  border-radius: 25px;
+
+  background:
+  rgba(255,255,255,.95);
+
+  box-shadow:
+  0 10px 35px rgba(0,0,0,.3);
+
+  text-align: center;
+
+}
+
+
+
+/* MOBILE */
+
+@media(max-width:600px){
+
+.voice-call {
+
+ left:15px;
+ bottom:20px;
+
+}
+
+
+.voice-call > button {
+
+ width:60px;
+ height:60px;
+
+}
+
+
+}
