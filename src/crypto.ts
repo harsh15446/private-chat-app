@@ -1,43 +1,29 @@
 // src/crypto.ts
 
-export async function createKey() {
-  return await crypto.subtle.generateKey(
-    {
-      name: "AES-GCM",
-      length: 256,
-    },
-    true,
-    ["encrypt", "decrypt"]
-  );
-}
+// Room code se same encryption key banegi
 
-
-export async function exportKey(key: CryptoKey) {
-  const exported =
-    await crypto.subtle.exportKey(
-      "jwk",
-      key
-    );
-
-  return JSON.stringify(exported);
-}
-
-
-export async function importKey(
-  keyString:string
+export async function createRoomKey(
+  roomCode: string
 ) {
 
-  const jwk =
-    JSON.parse(keyString);
+  const encoder =
+    new TextEncoder();
+
+
+  const hash =
+    await crypto.subtle.digest(
+      "SHA-256",
+      encoder.encode(roomCode)
+    );
 
 
   return await crypto.subtle.importKey(
-    "jwk",
-    jwk,
+    "raw",
+    hash,
     {
-      name:"AES-GCM",
+      name: "AES-GCM",
     },
-    true,
+    false,
     [
       "encrypt",
       "decrypt"
@@ -59,11 +45,6 @@ export async function encryptText(
     );
 
 
-  const encoded =
-    new TextEncoder()
-    .encode(text);
-
-
   const encrypted =
     await crypto.subtle.encrypt(
       {
@@ -71,7 +52,8 @@ export async function encryptText(
         iv
       },
       key,
-      encoded
+      new TextEncoder()
+      .encode(text)
     );
 
 
@@ -86,6 +68,7 @@ export async function encryptText(
   };
 
 }
+
 
 
 

@@ -33,9 +33,7 @@ import EmojiPicker from "emoji-picker-react";
 
 
 import {
-  createKey,
-  exportKey,
-  importKey,
+  createRoomKey,
   encryptText,
   decryptText
 } from "./crypto";
@@ -164,7 +162,6 @@ const exported =
 await exportKey(key);
 
 
-
 await setDoc(roomRef,{
 
 members:[username],
@@ -172,7 +169,6 @@ members:[username],
 key:exported
 
 });
-
 
 
 setRoomKey(key);
@@ -848,16 +844,11 @@ messages.map((msg)=>(
 
 
 <MessageBubble
-
-key={msg.id}
-
-user={msg.user}
-
-text={msg.text || ""}
-
-currentUser={username}
-
-
+  key={msg.id}
+  user={msg.user}
+  text={msg.text}
+  time={msg.time}
+  currentUser={username}
 />
 
 
